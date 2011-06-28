@@ -15,3 +15,4 @@ use FPChat\Bot;
 
 $bot = new Bot();
 $bot->login($config['username'], $config['password']);
+$bot->run();

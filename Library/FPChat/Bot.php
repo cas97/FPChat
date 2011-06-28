@@ -5,6 +5,9 @@ use FPChat\Exception;
 
 class Bot
 {
+	const REGEX_SECURITYTOKEN = '#var SECURITYTOKEN = \'(?<token>\d+-[a-z0-9]+)\';#';
+	const REGEX_LASTLINE = '#var LastLine = (?<lastline>\d+);#';
+
 	/**
 	 * @var Zend\Http\Client
 	 */
@@ -21,6 +24,10 @@ class Bot
 	 * @var bool
 	 */
 	private $_loggedIn = false;
+
+	private $_securityToken = '';
+
+	private $_lastLine = 0;
 
 	public function __construct()
 	{
@@ -41,7 +48,6 @@ class Bot
 			'securitytoken' => 'guest',
 			'do' => 'login'
 		));
-		$this->_httpClient->setUri($this->_url);
 
 		echo "Requesting...";
 		$response = $this->_req('POST', true); echo "Done\nParsing...";
@@ -52,7 +58,7 @@ class Bot
 
 		if (!count($results))
 		{
-			throw new Exception\Exception('Login returned an error');
+			throw new \Exception('Login returned an error');
 		}
 
 		echo "Logged in\n";
@@ -61,9 +67,78 @@ class Bot
 		$this->_loggedIn = true;
 	}
 
+    public  function run()
+    {
+        if (!$this->_loggedIn)
+        {
+            throw new \Exception('Please log in before running bot');
+        }
+
+        $this->_setup();
+
+		do {
+			$nextTick = time() + 10;
+
+			// Make an AJAX chat call
+			$response = $this->_chatRequest();
+
+			// Check to see if there's lines
+			if (count($response->lines))
+			{
+				$lines = array_reverse($response->lines);
+
+				foreach ($lines AS $line)
+				{
+					$line = (array) $line;
+					$this->_lastLine = max($this->_lastLine, $line['id']);
+
+					echo "({$line['id']})> {$line['html']}\n";
+				}
+			}
+
+			sleep($nextTick - time());
+		} while(true);
+    }
+
+	private function _chatRequest()
+	{
+		$this->_url->setPath('/chat/');
+		$this->_httpClient->setParameterGet(array('aj' => 1, 'lastget' => $this->_lastLine));
+		$response = $this->_req();
+		//print_r($response);
+
+		// NICE SPELLING GARRY
+		if ($response->reponse != 'OK')
+		{
+			throw new \Exception('The response was not okay!!!');
+		}
+
+		$this->_securityToken = $response->token;
+
+		return $response;
+	}
+
+    private function _setup()
+    {
+        // Get the needed stuff off the chat page
+		$this->_url->setPath('/chat/');
+		$response = $this->_req('GET', true);
+		$body = $response->getBody();
+
+		if (!preg_match(self::REGEX_SECURITYTOKEN, $body, $tokenMatches) || !preg_match(self::REGEX_LASTLINE, $body, $lineMatches))
+		{
+			throw new \Exception('Not able to extract the security token and/or last line from the page');
+		}
+
+		$this->_securityToken = $tokenMatches['token'];
+		$this->_lastLine = $lineMatches['lastline'];
+	}
+
 	private function _req($method = 'GET', $raw = false)
 	{
+		$this->_httpClient->setUri($this->_url);
 		$response = $this->_httpClient->request($method);
+		$this->_httpClient->resetParameters();
 
 		if ($response->isError())
 		{
@@ -74,5 +149,7 @@ class Bot
 		{
 			return $response;
 		}
+
+		return json_decode($response->getBody());
 	}
 }
