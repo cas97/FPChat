@@ -89,6 +89,8 @@ class Bot
 
 		// Assume at this point the login worked
 		$this->_loggedIn = true;
+
+		return $this;
 	}
 
 	public  function run()
@@ -160,6 +162,20 @@ class Bot
 	public function registerPlugin($code, Plugin\AbstractPlugin $plugin)
 	{
 		$this->_plugin->addPlugin($code, $plugin);
+
+		return $this;
+	}
+
+	public function say($message)
+	{
+		$this->_url->setPath('/chat/');
+		$this->_httpClient->setParameterPost(array(
+			'securitytoken' => $this->_securityToken,
+			'sendid' => 0,
+			'text' => $message
+		));
+		// Don't try and decode into JSON
+		$this->_req('POST', true);
 	}
 
 	private function _sleep($nextTick)
