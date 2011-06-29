@@ -45,6 +45,13 @@ class Bot
 	 */
 	private $_lastLine = 0;
 
+	/**
+	 * Names of users in chat by ID
+	 *
+	 * @var array
+	 */
+	private $_names = array();
+
 	public function __construct()
 	{
 		$this->_url = new \Zend\Uri\Url('http://www.facepunch.com/');
@@ -125,6 +132,27 @@ class Bot
 				}
 			}
 
+			// Process user join/quits
+			if (count($response->names))
+			{
+				$newNames = $this->_parseNames($response->names);
+				$currentNames = $this->_names;
+				$quitNames = array_diff_key($currentNames, $newNames);
+				$joinNames = array_diff_key($newNames, $currentNames);
+
+				foreach ($quitNames AS $id => $name)
+				{
+					$this->_plugin->onQuit($this, $name);
+				}
+
+				foreach ($joinNames AS $id => $name)
+				{
+					$this->_plugin->onJoin($this, $name);
+				}
+
+				$this->_names = $newNames;
+			}
+
 			$this->_sleep($nextTick + 5);
 		} while(true);
 	}
@@ -137,6 +165,26 @@ class Bot
 	private function _sleep($nextTick)
 	{
 		sleep(max(($nextTick - time()), 1));
+	}
+
+	private function _parseNames($names)
+	{
+		$users = array();
+
+		foreach ($names AS $name)
+		{
+			$user = new User;
+			$user->id = $name->id;
+
+			preg_match('#class=\'group(?<groupid>\d+)\'#', $name->name, $groupMatch);
+			$user->groupId = $groupMatch['groupid'];
+
+			$user->username = strip_tags($name->name);
+
+			$users[$user->id] = $user;
+		}
+
+		return $users;
 	}
 
 	/**
@@ -209,6 +257,10 @@ class Bot
 
 		$this->_securityToken = $tokenMatches['token'];
 		$this->_lastLine = $lineMatches['lastline'];
+
+		// Populate the names list
+		$response = $this->_chatRequest();
+		$this->_names = $this->_parseNames($response->names);
 	}
 
 	private function _req($method = 'GET', $raw = false)
