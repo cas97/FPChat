@@ -20,14 +20,29 @@ class Bot
 	private $_url;
 
 	/**
+	 * @var PluginBroker
+	 */
+	private $_plugin;
+
+	/**
 	 * Indicates whether or not the user has logged in yet
 	 *
 	 * @var bool
 	 */
 	private $_loggedIn = false;
 
+	/**
+	 * Security token needed for AJAX calls
+	 *
+	 * @var string
+	 */
 	private $_securityToken = '';
 
+	/**
+	 * Last line ID
+	 *
+	 * @var int
+	 */
 	private $_lastLine = 0;
 
 	public function __construct()
@@ -35,6 +50,7 @@ class Bot
 		$this->_url = new \Zend\Uri\Url('http://www.facepunch.com/');
 		$this->_httpClient = new \Zend\Http\Client($this->_url, array('adapter' => 'Zend\\Http\\Client\\Adapter\\Curl'));
 		$this->_httpClient->setCookieJar(true);
+		$this->_plugin = new PluginBroker();
 
 		echo "Inited\n";
 	}
@@ -81,7 +97,13 @@ class Bot
 			$nextTick = time() + 2;
 
 			// Make an AJAX chat call
-			$response = $this->_chatRequest();
+			try {
+				$response = $this->_chatRequest();
+			} catch (\Exception $e) {
+				// A network error occurred, sleep and try again
+				$this->_sleep($nextTick + 5);
+				continue;
+			}
 
 			// Check to see if there's lines
 			if (count($response->lines))
@@ -94,12 +116,27 @@ class Bot
 					$this->_lastLine = max($this->_lastLine, $line['id']);
 					$lineBit = $this->_parseLine($line['id'], $line['html']);
 
-					echo '<' . $lineBit->username . '> ' . $lineBit->message . "\n";
+					$this->_plugin->onLine($this, $lineBit);
+
+					if ($lineBit->mentioned)
+					{
+						$this->_plugin->onMention($this, $lineBit);
+					}
 				}
 			}
 
-			sleep($nextTick - time());
+			$this->_sleep($nextTick + 5);
 		} while(true);
+	}
+
+	public function registerPlugin($code, Plugin\AbstractPlugin $plugin)
+	{
+		$this->_plugin->addPlugin($code, $plugin);
+	}
+
+	private function _sleep($nextTick)
+	{
+		sleep(max(($nextTick - time()), 1));
 	}
 
 	/**
