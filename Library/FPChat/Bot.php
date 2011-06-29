@@ -7,6 +7,7 @@ class Bot
 {
 	const REGEX_SECURITYTOKEN = '#var SECURITYTOKEN = \'(?<token>\d+-[a-z0-9]+)\';#';
 	const REGEX_LASTLINE = '#var LastLine = (?<lastline>\d+);#';
+	const REGEX_TIMESTMAP = '#<b>\[(?<time>\d+:\d+:\d+)\]</b>#';
 
 	/**
 	 * @var Zend\Http\Client
@@ -67,17 +68,17 @@ class Bot
 		$this->_loggedIn = true;
 	}
 
-    public  function run()
-    {
-        if (!$this->_loggedIn)
-        {
-            throw new \Exception('Please log in before running bot');
-        }
+	public  function run()
+	{
+		if (!$this->_loggedIn)
+		{
+			throw new \Exception('Please log in before running bot');
+		}
 
-        $this->_setup();
+		$this->_setup();
 
 		do {
-			$nextTick = time() + 10;
+			$nextTick = time() + 2;
 
 			// Make an AJAX chat call
 			$response = $this->_chatRequest();
@@ -91,14 +92,53 @@ class Bot
 				{
 					$line = (array) $line;
 					$this->_lastLine = max($this->_lastLine, $line['id']);
+					$lineBit = $this->_parseLine($line['id'], $line['html']);
 
-					echo "({$line['id']})> {$line['html']}\n";
+					echo '<' . $lineBit->username . '> ' . $lineBit->message . "\n";
 				}
 			}
 
 			sleep($nextTick - time());
 		} while(true);
-    }
+	}
+
+	/**
+	 * Parses messages
+	 *
+	 * @param  $id
+	 * @param  $html
+	 * @return \FPChat\Line
+	 */
+	private function _parseLine($id, $html)
+	{
+		$dom = new \Zend\Dom\Query($html);
+		$line = new Line;
+		$line->id = $id;
+		/** @var $lineElement \DOMElement */
+		$lineElement = $dom->execute('.line')->current();
+
+		// Work out if we were mentioned
+		$classes = explode(' ', $lineElement->getAttribute('class'));
+		$line->mentioned = in_array('mentioned', $classes);
+
+		// Get the timestamp
+		preg_match(self::REGEX_TIMESTMAP, $html, $timestampMatch);
+		$date = \DateTime::createFromFormat('H:i:s', $timestampMatch['time'], new \DateTimeZone('UTC'));
+		$line->timestamp = $date->getTimestamp();
+
+		// Get user information
+		/** @var $userA \DOMElement */
+		$userA = $dom->execute('.line span.username a')->current();
+		$line->userId = (int) substr($userA->getAttribute('href'), 9);
+		$line->username = $userA->nodeValue;
+
+		// Get the message
+		$userBit = $lineElement->getElementsByTagName('span')->item(0);
+		$lineElement->removeChild($userBit);
+		$line->message = $lineElement->nodeValue;
+
+		return $line;
+	}
 
 	private function _chatRequest()
 	{
