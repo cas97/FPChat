@@ -82,7 +82,7 @@ class Bot
 
 		if (!count($results))
 		{
-			throw new \Exception('Login returned an error');
+			throw new \Exception('Login returned an error. Banned?');
 		}
 
 		echo "Logged in\n";
@@ -102,6 +102,9 @@ class Bot
 
 		$this->_setup();
 
+		// Todo: Is this an appropriate place for onConnect? It works fine...
+		$this->_plugin->onConnect($this);
+		
 		do {
 			$nextTick = time() + 2;
 
@@ -174,6 +177,8 @@ class Bot
 			'sendid' => 0,
 			'text' => $message
 		));
+		// So we can see what the bot is saying
+		echo '<' . $config['username'] . '> ' . $message . "\n"; 
 		// Don't try and decode into JSON
 		$this->_req('POST', true);
 	}

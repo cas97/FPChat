@@ -16,5 +16,6 @@ use FPChat\Bot;
 $bot = new Bot();
 $bot->login($config['username'], $config['password']);
 $bot->registerPlugin('console', new FPChat\Plugin\ConsolePrint);
-$bot->registerPlugin('snarky', new FPChat\Plugin\Snarky);
+//$bot->registerPlugin('snarky', new FPChat\Plugin\Snarky);
+$bot->registerPlugin('EightBallBot', new FPChat\Plugin\EightBallBot);
 $bot->run();
